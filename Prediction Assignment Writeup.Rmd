@@ -1,0 +1,106 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Jacob Nelson"
+date: "May 15, 2016"
+output: html_document
+---
+
+## Introduction
+Human activity recognition has most commonly focused on discriminating between different activities, to determine which activity was actually performed.  However, very rarely has human activity recognition been used to discover "how well" someone does an activity.  Motion data was collected on human movement during a weight lifting exercise, where respondents were randomly assigned to perform the exercise correctly, or in four other "incorrect" ways.  Using random forest machine learning, this analysis trains an algorithm to predict in which of the five ways of performing the exercise was performed based on more than 50 motion variables.  
+
+##Loading the data. 
+
+The data is first loaded in.  
+
+```{r}
+pmltraining <- read.csv("~/Jake/Data Science Specialization/pml-training.csv", na.strings = c("", " ", "NA"))
+pmltesting <- read.csv("~/Jake/Data Science Specialization/pml-testing.csv",  na.strings = c("", " ", "NA"))
+```
+
+A list of the variable names is given here:
+
+```{r}
+names <- colnames(pmltraining)
+names
+```
+
+The "classe" variable, given last in the dataset, is the outcome variable of interest, and is given as a factor variable of 5 levels, "A", "B", "C", "D", and "E"; where "A" corresponds to the correct form of exercise and the rest represent different incorrect ways of performing the exercise.  
+
+The testing dataset consists of only 20 observations with no outcome variable.  To train and validate the final algorithm, data partitioning of the pmltraining data into train and test data sets will be performed later.  
+
+Some identifier variables and some summary variables are given in the dataset and are not used in prediction.  They are weeded out of the dataset with the following code:
+
+```{r}
+keepCol <- NULL
+for(i in 1:length(names)) {
+    if(!anyNA(pmltraining[,names[i]])) {
+        keepCol <- c(keepCol, names[i])
+    }
+}
+pmltraining <- pmltraining[,keepCol][8:60]
+```
+
+##Partitioning the data
+
+Partitioning and training algorithms is done well in the 'caret' package, which is loaded here.  For reproducibility, the randomization seed used in future training methods is also given here.  
+
+```{r}
+library(caret)
+set.seed(92890)
+```
+
+
+During the course of the analysis, it quickly became clear that given the selected training method used here, the computational time would be far too large for so many variables and observations.  To maximize model accuracy without demanding too much computational time, only a 25% sample of the original pmltraining data was used to train and test the prediction model.  Due to the size of the partition, it was not possible to partition the data in this manner with the createDataPartition() function in the 'caret' package, as it is dependent on the table() function which does not work for datasets with over 2^31 number of elements.  Therefore, this sampling is done manually with the following code.
+
+```{r}
+subset_size <- floor(0.25 * nrow(pmltraining)) 
+ind_master <- sample(seq_len(nrow(pmltraining)), size = subset_size)
+df_master_subset <- pmltraining[ind_master,]
+```
+
+The partitioning into test and train datasets is also done manually:
+
+```{r}
+smp_size <- floor(0.7 * nrow(df_master_subset))
+inTrain <- sample(seq_len(nrow(df_master_subset)), size = smp_size)
+df_train <- df_master_subset[inTrain,]
+df_test <-df_master_subset[-inTrain,]
+```
+
+Altogether, the training data represents an 18% sample of the total dataset, while the testing data represents 7%.  
+
+##Training the model
+
+Because the outcome is a factor variable, random forest methods for obtaining a prediction model seemed like the most accurate way of predicting exercise outcomes.  The model is trained using the caret package:
+
+```{r cache=TRUE}
+pml_forest <- train(classe ~., data = df_train, method = "rf")
+```
+
+On my laptop with moderate specs, this prediction model takes about 20 minutes to calculate, but the final model is highly accurate and is worth the wait.  
+
+To test the prediction accuracy, the model is used to predict values on the test dataset, and compared against actual values using a confusion matrix.  
+
+```{r}
+pml_predictRF <- predict(pml_forest, df_test)
+pml_cmRF <- confusionMatrix(pml_predictRF, df_test$classe)
+```
+
+The accuracy statistic can be further selected out of the confusion matrix object. It is also given as an "out of sample error" alternative statistic
+```{r}
+##Accuracy
+maccRF <- pml_cmRF$overall['Accuracy']
+maccRF 
+
+##Out of sample error
+oose <- 1-maccRF
+oose
+```
+
+This demonstrates that the model has a high prediction accuracy on a random test set.  Predicting the outcomes of 'pmltesting' on this algorithm, therefore, can be assumed to be near perfectly accurate.  The predictions are given in this code:  
+
+```{r}
+final_predict <- predict(pml_forest, pmltesting)
+final_predict
+```
+
